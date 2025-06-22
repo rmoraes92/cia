@@ -1,0 +1,11 @@
+[importees.module_c]
+allowed = [
+    "module_d"
+]
+
+
+[importers.module_a]
+allowed = [
+    "module_d"
+]
+
