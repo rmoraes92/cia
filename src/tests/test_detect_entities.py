@@ -3,47 +3,58 @@ from pathlib import Path
 
 import cia
 
+"""
+Rework the TOML format to:
+[module_a]
+operation = "allowed"
+imported_by = ["module_d"]
 
-class ImportingRulesTestCase(unittest.TestCase):
+[module_d]
+operation = "allowed"
+import_from = ["module_a"]
+"""
 
-    def test_parse_empty_rule_file(self):
-        rule_file_body = ""
-        rules = cia.load_rules(
-            rule_file_body,
-        )
-        self.assertTrue(isinstance(rules, dict))
-        self.assertTrue(len(rules) == 0)
 
-    def test_parse_importees_only_file(self):
+class ParsingRulebookTestCase(unittest.TestCase):
+
+    def test_parsing_with_dataclasses(self):
         rule_file_body = """
-        [importees.module_c]
-        allowed = ["module_d"]
+        [module_a]
+        operation = "allowed"
+        imported_by = ["module_d"]
+
+        [module_d]
+        operation = "allowed"
+        import_from = ["module_a"]
         """
-        rules = cia.load_rules(
+        rules = cia.load_rulebook(
             rule_file_body,
         )
-        self.assertTrue(isinstance(rules, dict))
-        self.assertTrue(rules.get("importees"))
-        self.assertTrue(rules["importees"].get("module_c"))
-        self.assertTrue(rules["importees"]["module_c"].get("allowed"))
-        self.assertTrue(len(rules["importees"]["module_c"]["allowed"]) == 1)
+        self.assertTrue(isinstance(rules, cia.Rulebook))
+        self.assertTrue(len(rules.rules) == 2)
 
-    def test_parse_importers_only_file(self):
-        rule_file_body = """
-        [importers.module_d]
-        allowed = ["module_c"]
-        """
-        rules = cia.load_rules(
-            rule_file_body,
+
+class ParsingPythonModuleTestCase(unittest.TestCase):
+
+    def test_parsing_import_statements(self):
+        python_mod_body = (
+            "import a\n" "def hello_world():\n" "    print('Hello, World!')\n"
         )
-        self.assertTrue(isinstance(rules, dict))
-        self.assertTrue(rules.get("importers"))
-        self.assertTrue(rules["importers"].get("module_d"))
-        self.assertTrue(rules["importers"]["module_d"].get("allowed"))
-        self.assertTrue(len(rules["importers"]["module_d"]["allowed"]) == 1)
 
+        imports = cia.parse_import_statements(python_mod_body)
 
-class ImporteesTestCase(unittest.TestCase):
+        self.assertTrue(len(imports) == 1)
+        self.assertTrue(imports[0].root == "a")
 
-    def test_
+        python_mod_body = (
+            "from a import func_a\n"
+            "def hello_world():\n"
+            "    print('Hello, World!')\n"
+        )
 
+        imports = cia.parse_import_statements(python_mod_body)
+
+        self.assertTrue(len(imports) == 1)
+        self.assertTrue(imports[0].root == "a")
+        self.assertTrue(len(imports[0].children) == 1)
+        self.assertTrue(imports[0].children[0] == "func_a")
