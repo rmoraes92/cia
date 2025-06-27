@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from enum import StrEnum
-from logging import getLogger
 
 type ModuleName = str
 type ModuleSourceCode = str
@@ -15,18 +14,17 @@ class ModuleRuleOperation(StrEnum):
 @dataclass
 class ModuleRule:
     operation: ModuleRuleOperation
-    imported_by: list[str] | None = None
-    import_from: list[str] | None = None
+    imported_by: list[str]
 
 
 @dataclass
 class Rulebook:
-    rules: dict[ModuleRuleName, ModuleRule] = field(default_factory=dict)
+    rules: dict[ModuleRuleName, ModuleRule]
 
 
 @dataclass
 class ImportStatement:
-    root: ModuleName
+    module_name: ModuleName
     children: list[ModuleName]
 
 
@@ -35,3 +33,15 @@ class Module:
     name: ModuleName
     source_code: ModuleSourceCode
     import_statements: list[ImportStatement]
+
+
+class AppliedRuleStatus(StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+
+
+@dataclass
+class AppliedRuleResult:
+    rule: ModuleRule
+    module: Module
+    status: AppliedRuleStatus
