@@ -1,5 +1,5 @@
 # import argparse as ap
-
+import re
 import ast
 import tomllib
 from logging import getLogger
@@ -8,7 +8,7 @@ from pathlib import Path
 from .models import (
     ImportStatement,
     Module,
-    ModuleRuleName,
+    ModuleName,
     ModuleSourceCode,
     Rulebook,
     ModuleRule,
@@ -26,11 +26,10 @@ def read_rulebook_file(file_path: Path) -> str:
 
 
 def load_rulebook(rule_file_body: str) -> Rulebook:
-    rules_dict = tomllib.loads(rule_file_body)
-    for module_name, rule_dict in rules_dict.items():
-        rules_dict[module_name] =  ModuleRule(**rule_dict)
-
-    return Rulebook(rules=rules_dict)
+    rules = {}
+    for rule in tomllib.loads(rule_file_body).get("rules", []):
+        rules[rule["module"]] = ModuleRule(**rule)
+    return Rulebook(rules=rules)
 
 
 def parse_import_statements(
@@ -61,12 +60,15 @@ def parse_import_statements(
 
 
 def parse_module(
-    module_name: ModuleRuleName, module_file_body: ModuleSourceCode
+    module_file_path: Path, module_file_body: ModuleSourceCode
 ) -> Module:
     imports = parse_import_statements(module_file_body)
+    module_name = module_file_path.name
+    mod_abs_path = str(module_file_path).replace("/", ".")
 
     return Module(
         name=module_name,
+        abs_path=mod_abs_path,
         source_code=module_file_body,
         import_statements=imports,
     )
@@ -80,24 +82,36 @@ def read_module_file(file_path: Path) -> ModuleSourceCode:
 def load_module(
     module_file_path: Path, module_file_body: ModuleSourceCode
 ) -> Module:
-    module_name = module_file_path.name
-    return parse_module(module_name, module_file_body)
+
+    return parse_module(module_file_path, module_file_body)
 
 
-def apply_rulebook(module: Module, rulebook: Rulebook) -> list[AppliedRuleResult]:
+def apply_rulebook(
+        importee_module: Module,
+        rulebook: Rulebook
+        ) -> list[AppliedRuleResult]:
     ret = []
-    for import_statement in module.import_statements:
-        module_rule = rulebook.rules.get(import_statement.module_name)
-
-        if module_rule is None:
-            continue
-
-        if module_rule.operation == ModuleRuleOperation.NOT_ALLOWED \
-            and module.name in module_rule.imported_by:
-                ret.append(AppliedRuleResult(
-                    module=module,
-                    rule=module_rule,
-                    status=AppliedRuleStatus.FAILED,
-                ))
+    for import_statement in importee_module.import_statements:
+        for abs_import_mod_path in import_statement.absolute_paths():
+            for module_path_pattern, rule in rulebook.rules.items():
+                if re.match(module_path_pattern, abs_import_mod_path):
+                    for rule_importee_mod_pattern in rule.imported_by:
+                        if re.match(rule_importee_mod_pattern, importee_module.abs_path):
+                            if rule.modality == ModuleRuleOperation.ALLOWED:
+                                ret.append(AppliedRuleResult(
+                                    rule=rule,
+                                    importee_module=importee_module,
+                                    abs_imported_module_path=abs_import_mod_path,
+                                    status=AppliedRuleStatus.PASSED
+                                ))
+                            elif rule.modality == ModuleRuleOperation.NOT_ALLOWED:
+                                ret.append(AppliedRuleResult(
+                                    rule=rule,
+                                    importee_module=importee_module,
+                                    abs_imported_module_path=abs_import_mod_path,
+                                    status=AppliedRuleStatus.FAILED
+                                ))
+                            else:
+                                logger.warning(f"module rule operation not implemented: {rule.modality.value}")
 
     return ret
